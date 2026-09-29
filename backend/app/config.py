@@ -17,6 +17,7 @@ class Settings:
     )
     page_size_default: int = 20
     page_size_max: int = 200
+    crane_remind_threshold_days: int = 30
 
 
 settings = Settings()

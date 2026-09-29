@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.routers import ROUTERS
+from app.services.crane import reminder_service as crane_reminders
 from app.store import store
 
 app = FastAPI(title="特种设备点检运维平台", version="1.0.0")
@@ -34,5 +35,5 @@ def health() -> dict[str, object]:
 
 @app.get("/api/overview")
 def overview() -> dict[str, object]:
-    """运营概览：把各业务模块的待处理量汇总成看板卡片。"""
-    return store.overview()
+    """运营概览：把各业务模块的待处理量汇总成看板卡片；起重机械按到期提醒快照计。"""
+    return crane_reminders.apply_to_overview(store.overview())

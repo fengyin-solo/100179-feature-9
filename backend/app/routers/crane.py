@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 
 from app.schemas import ActionResult, EntryPayload, PageResult
-from app.services.crane import CraneService
+from app.services.crane import CraneService, reminder_service
 
 router = APIRouter(prefix="/api/crane", tags=["起重机械"])
 
@@ -28,6 +28,34 @@ def list_entries(
         raise HTTPException(status_code=400, detail="每页最多 200 条，请缩小分页范围")
     items, total = service.list_entries(keyword=keyword, status=status, page=page, size=size)
     return PageResult(items=items, total=total, page=page, size=size)
+
+
+@router.get("/reminders")
+def get_reminders() -> dict[str, Any]:
+    """起重机械到期提醒快照：列表标记、运营概览与台账统计都读这同一份结果。"""
+    return reminder_service.snapshot()
+
+
+@router.put("/reminders/threshold", response_model=ActionResult)
+def update_threshold(payload: EntryPayload) -> ActionResult:
+    """调整到期判定阈值并按新口径重算；历史评估仍按当时阈值保留。"""
+    days, message = reminder_service.update_threshold(payload.values.get("threshold_days"))
+    if days is None:
+        return ActionResult(ok=False, message=message)
+    return ActionResult(ok=True, message=message, entry=reminder_service.snapshot())
+
+
+@router.get("/reminders/history")
+def get_reminder_history() -> dict[str, Any]:
+    """历次评估记录：每次判断连同当时使用的阈值一起保留，不回改。"""
+    return {"module": "crane", "items": reminder_service.history()}
+
+
+@router.get("/export")
+def export_entries() -> dict[str, Any]:
+    """导出起重机械清单：返回当前过滤条件下的全量数据。"""
+    items, total = service.list_entries(page=1, size=10000)
+    return {"module": "crane", "total": total, "items": items}
 
 
 @router.get("/{entry_id}", response_model=dict)
@@ -56,10 +84,3 @@ def run_action(entry_id: int, payload: EntryPayload) -> ActionResult:
     if entry is None:
         return ActionResult(ok=False, message=message)
     return ActionResult(ok=True, message=message, entry=entry)
-
-
-@router.get("/export")
-def export_entries() -> dict[str, Any]:
-    """导出起重机械清单：返回当前过滤条件下的全量数据。"""
-    items, total = service.list_entries(page=1, size=10000)
-    return {"module": "crane", "total": total, "items": items}
