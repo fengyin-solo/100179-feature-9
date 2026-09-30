@@ -14,6 +14,9 @@ class Store:
         self._tables: dict[str, list[dict[str, Any]]] = {
             name: [dict(row) for row in rows] for name, rows in SEED_ROWS.items()
         }
+        # 到期提醒的运行期口径与历史判定：口径可在线调整，历史按当时口径留档不回改。
+        self._reminder_rules: dict[str, dict[str, Any]] = {}
+        self._reminder_history: dict[str, list[dict[str, Any]]] = {}
 
     def module_names(self) -> list[str]:
         return sorted(self._tables)
@@ -26,6 +29,18 @@ class Store:
             if int(row.get("id", 0)) == entry_id:
                 return row
         return None
+
+    def reminder_rule(self, module: str) -> dict[str, Any] | None:
+        return self._reminder_rules.get(module)
+
+    def save_reminder_rule(self, module: str, rule: dict[str, Any]) -> None:
+        self._reminder_rules[module] = rule
+
+    def reminder_history(self, module: str) -> list[dict[str, Any]]:
+        return self._reminder_history.setdefault(module, [])
+
+    def append_reminder_history(self, module: str, record: dict[str, Any]) -> None:
+        self.reminder_history(module).append(record)
 
     def overview(self) -> dict[str, object]:
         modules: list[dict[str, object]] = []

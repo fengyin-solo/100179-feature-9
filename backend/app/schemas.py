@@ -28,6 +28,21 @@ class EntryPayload(BaseModel):
     remark: str | None = None
 
 
+class ReminderTierPayload(BaseModel):
+    """到期提醒的一档口径：按额定起重量与跨度规格划分，阈值为天。"""
+
+    name: str
+    min_capacity_t: float = 0
+    min_span_m: float = 0
+    threshold_days: int = 0
+
+
+class ReminderRulePayload(BaseModel):
+    """调整起重机械到期判定阈值时提交的口径集合。"""
+
+    tiers: list[ReminderTierPayload] = Field(default_factory=list)
+
+
 
 class BoilerEntry(BaseModel):
     """锅炉设备明细结构。"""

@@ -5,8 +5,9 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.schemas import ActionResult, EntryPayload, PageResult
+from app.schemas import ActionResult, EntryPayload, PageResult, ReminderRulePayload
 from app.services.crane import CraneService
+from app.services.crane_reminder import crane_reminder_service
 
 router = APIRouter(prefix="/api/crane", tags=["起重机械"])
 
@@ -14,6 +15,34 @@ service = CraneService()
 
 LIST_FIELDS = ["机械编号", "机械名称", "额定起重量", "跨度规格", "使用场所", "投用日期", "下次检验日", "机械状态"]
 STATUSES = ["待投用", "在用运行", "停机检修", "已报废"]
+
+
+@router.get("/ledger")
+def crane_ledger() -> dict[str, Any]:
+    """起重机械台账：按额定起重量与跨度规格分档的全量到期判定。"""
+    return crane_reminder_service.ledger()
+
+
+@router.get("/reminder-rule")
+def get_reminder_rule() -> dict[str, Any]:
+    """读取当前到期判定口径；列表、概览与台账都按这份口径出结果。"""
+    return crane_reminder_service.current_rule()
+
+
+@router.put("/reminder-rule")
+def update_reminder_rule(payload: ReminderRulePayload) -> dict[str, Any]:
+    """调整到期判定阈值：旧口径下的判定先留档，三处展示随即按新口径重算。"""
+    rule, error = crane_reminder_service.update_rule([tier.model_dump() for tier in payload.tiers])
+    if error:
+        raise HTTPException(status_code=400, detail=error)
+    return {"ok": True, "message": f"到期判定口径已更新到第 {rule['version']} 版", "rule": rule}
+
+
+@router.get("/reminder-history")
+def reminder_history() -> dict[str, Any]:
+    """历史判定留档：每次调整口径前的判断结果，仍按当时的阈值保留。"""
+    history = crane_reminder_service.history()
+    return {"total": len(history), "items": history}
 
 
 @router.get("", response_model=PageResult[dict])

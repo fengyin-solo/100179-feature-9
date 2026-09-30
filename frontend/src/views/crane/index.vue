@@ -3,7 +3,7 @@
     <header class="page-head">
       <div>
         <h2>起重机械管理</h2>
-        <p class="page-desc">维护起重机械，围绕机械编号、机械名称、额定起重量、跨度规格做登记、筛选与状态流转。</p>
+        <p class="page-desc">维护起重机械，围绕机械编号、机械名称、额定起重量、跨度规格做登记、筛选与状态流转；到期提醒按检验口径自动标记。</p>
       </div>
       <div class="page-actions">
         <button class="btn primary" type="button" @click="openCreate">登记起重机械</button>
@@ -36,7 +36,13 @@
       </thead>
       <tbody>
         <tr v-for="row in rows" :key="String(row.id)">
-          <td v-for="column in columns" :key="column">{{ row[column] ?? '—' }}</td>
+          <td v-for="column in columns" :key="column">
+            <span v-if="column === '到期提醒'" class="tag" :class="tagClass(row[column])">
+              {{ row[column] ?? '—' }}
+            </span>
+            <span v-else-if="column === '剩余天数'">{{ formatRemaining(row[column]) }}</span>
+            <template v-else>{{ row[column] ?? '—' }}</template>
+          </td>
           <td class="row-actions">
             <button
               v-for="action in actions"
@@ -65,21 +71,48 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 
-import { request } from '@/api/client'
+import { fetchJson, request } from '@/api/client'
 
 type Row = Record<string, string | number | null>
+type LedgerSummary = { summary: Record<string, number> }
 
 const ENDPOINT = '/api/crane'
-const columns = ["机械编号", "机械名称", "额定起重量", "跨度规格", "使用场所", "投用日期", "下次检验日", "机械状态"]
+const columns = ["机械编号", "机械名称", "额定起重量", "跨度规格", "使用场所", "投用日期", "下次检验日", "机械状态", "检验口径", "剩余天数", "到期提醒"]
 const actions = ["办理投用", "安排检修", "报废机械"]
 const statuses = ["待投用", "在用运行", "停机检修", "已报废"]
-const stats = [{"label": "在用起重机械", "value": 0}, {"label": "停机检修", "value": 0}, {"label": "临近检验", "value": 0}]
 
 const rows = ref<Row[]>([])
 const total = ref(0)
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
+// 统计卡与起重机械台账共用同一份判定汇总，刷新后口径一致
+const stats = ref([
+  { label: '待处理（临近+超期）', value: 0 },
+  { label: '临近检验', value: 0 },
+  { label: '已超期', value: 0 },
+  { label: '检验日缺失', value: 0 },
+])
+
+function tagClass(label: Row[string]) {
+  switch (label) {
+    case '超期':
+      return 'tag-overdue'
+    case '临近':
+      return 'tag-near'
+    case '缺失':
+      return 'tag-missing'
+    default:
+      return 'tag-normal'
+  }
+}
+
+function formatRemaining(days: Row[string]) {
+  if (days === null || days === undefined || days === '') return '—'
+  const value = Number(days)
+  if (Number.isNaN(value)) return '—'
+  return value < 0 ? `已超期 ${-value} 天` : `剩 ${value} 天`
+}
 
 function resetFilters() {
   filters.value = {}
@@ -114,13 +147,23 @@ async function reload() {
   errorMessage.value = ''
   const query = new URLSearchParams(filters.value as Record<string, string>).toString()
   try {
-    const response = await request(`${ENDPOINT}?${query}`)
+    const [response, ledger] = await Promise.all([
+      request(`${ENDPOINT}?${query}`),
+      fetchJson<LedgerSummary>(`${ENDPOINT}/ledger`),
+    ])
     if (!response.ok) {
       throw new Error('起重机械列表读取失败')
     }
     const payload = await response.json()
     rows.value = payload.items ?? []
     total.value = payload.total ?? rows.value.length
+    const summary = ledger.summary ?? {}
+    stats.value = [
+      { label: '待处理（临近+超期）', value: summary['待处理'] ?? 0 },
+      { label: '临近检验', value: summary['临近'] ?? 0 },
+      { label: '已超期', value: summary['超期'] ?? 0 },
+      { label: '检验日缺失', value: summary['缺失'] ?? 0 },
+    ]
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '起重机械列表读取失败'
   }
